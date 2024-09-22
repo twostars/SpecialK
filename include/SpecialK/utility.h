@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This file is part of Special K.
  *
  * Special K is free software : you can redistribute it
@@ -46,7 +46,8 @@ int            SK_MessageBox           (std::wstring caption,
                                         std::wstring title,
                                         uint32_t     flags);
 
-std::string    SK_WideCharToUTF8       (std::wstring in);
+std::string    SK_WideCharToUTF8       (const std::wstring& in);
+std::wstring   SK_UTF8ToWideChar       (const std::string& in);
 
 void           SK_SetNormalFileAttribs (std::wstring file);
 
@@ -211,5 +212,40 @@ int
 __cdecl
 crc32c_hw_available (void);
 
+class SK_AutoHandle
+{
+  // Signed handles are invalid, since handles are pointers and
+  //   the signed half of the address space is only for kernel
+
+public:
+  SK_AutoHandle (HANDLE hHandle) noexcept
+    : m_h(hHandle)
+  {
+  }
+
+  ~SK_AutoHandle (void) noexcept
+  {
+    // We cannot close these handles because technically they
+    //   were never opened (by usermode code).
+    if (reinterpret_cast <intptr_t> (m_h) < reinterpret_cast <intptr_t> (nullptr))
+                                      m_h =                               nullptr;
+
+    // Signed handles are often special cases
+    //   such as -2 = Current Thread, -1 = Current Process
+    if (m_h != nullptr)
+      CloseHandle(m_h);
+  }
+
+  operator HANDLE(void) const noexcept {
+    return m_h;
+  }
+
+  const HANDLE& get (void) const noexcept {
+    return m_h;
+  }
+
+  protected:
+    HANDLE m_h;
+};
 
 #endif /* __SK__UTILITY_H__ */

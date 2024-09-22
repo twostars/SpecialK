@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This file is part of Special K.
  *
  * Special K is free software : you can redistribute it
@@ -47,7 +47,7 @@ SK_MessageBox (std::wstring caption, std::wstring title, uint32_t flags)
 }
 
 std::string
-SK_WideCharToUTF8 (std::wstring in)
+SK_WideCharToUTF8 (const std::wstring& in)
 {
   int len = WideCharToMultiByte ( CP_UTF8, 0x00, in.c_str (), -1, nullptr, 0, nullptr, FALSE );
 
@@ -55,6 +55,19 @@ SK_WideCharToUTF8 (std::wstring in)
               out.resize (len);
 
   WideCharToMultiByte           ( CP_UTF8, 0x00, in.c_str (), (int)in.length (), (char *)out.data (), len, nullptr, FALSE );
+
+  return out;
+}
+
+std::wstring
+SK_UTF8ToWideChar (const std::string& in)
+{
+  int len = MultiByteToWideChar ( CP_UTF8, 0x00, in.c_str (), -1, nullptr, 0 );
+
+  std::wstring out;
+  out.resize (len);
+
+  MultiByteToWideChar           ( CP_UTF8, 0x00, in.c_str (), (int)in.length (), (wchar_t *)out.data (), len );
 
   return out;
 }

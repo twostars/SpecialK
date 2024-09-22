@@ -141,6 +141,9 @@
     <TargetName>dxgi</TargetName>
     <OutDir>C:\Program Files (x86)\Steam\steamapps\common\NieRAutomata\</OutDir>
   </PropertyGroup>
+  <PropertyGroup>
+    <IncludePath>$(IncludePath);$(SolutionDir)include</IncludePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>

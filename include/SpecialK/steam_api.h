@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This file is part of Special K.
  *
  * Special K is free software : you can redistribute it
@@ -26,6 +26,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <SpecialK/utility.h>
 
 namespace SK
 {
@@ -154,5 +155,168 @@ ISteamUtils*   SK_SteamAPI_Utils                    (void);
 
 uint32_t __stdcall SK_Steam_PiratesAhoy                 (void);
 
+
+#include <stack>
+
+// Barely functional Steam Key/Value Parser
+//   -> Does not handle unquoted kv pairs.
+class SK_Steam_KeyValues
+{
+public:
+  static
+  std::vector <std::string>
+  getKeys ( const std::string                &input,
+            const std::deque  <std::string>  &sections,
+                  std::vector <std::string>* values = nullptr )
+  {
+    std::vector <std::string> ret;
+
+    if (sections.empty () || input.empty ())
+      return ret;
+
+    struct {
+      std::deque <std::string> path;
+
+      struct {
+        std::string actual;
+        std::string test;
+      } heap;
+
+      void heapify (std::deque <std::string> const* sections = nullptr)
+      {
+        int i = 0;
+
+        auto& in  = (sections == nullptr) ? path        : *sections;
+        auto& out = (sections == nullptr) ? heap.actual : heap.test;
+
+        out = "";
+
+        for ( auto& str : in )
+        {
+          if (i++ > 0)
+            out += "\x01";
+
+            out += str;
+        }
+      }
+    } search_tree;
+
+    search_tree.heapify (&sections);
+
+    std::string name   = "";
+    std::string value  = "";
+    int         quotes = 0;
+
+    const auto clear =
+   [&](void) noexcept
+    {
+      name.clear  ();
+      value.clear ();
+      quotes = 0;
+    };
+
+    for (auto c : input)
+    {
+      if (c == '"')
+        ++quotes;
+
+      else if (c != '{')
+      {
+        if (quotes == 1)
+        {
+          name += c;
+        }
+
+        if (quotes == 3)
+        {
+          value += c;
+        }
+      }
+
+      if (quotes == 4)
+      {
+        if (0 == _stricmp ( search_tree.heap.test.c_str   (),
+                            search_tree.heap.actual.c_str () ) )
+        {
+          ret.emplace_back (name);
+
+          if (values != nullptr)
+            values->emplace_back (value);
+        }
+
+        clear ();
+      }
+
+      if (c == '{')
+      {
+        search_tree.path.push_back (name);
+        search_tree.heapify        (    );
+
+        clear ();
+      }
+
+      else if (c == '}')
+      {
+        search_tree.path.pop_back ();
+
+        clear ();
+      }
+    }
+
+    return ret;
+  }
+
+  static
+  std::string
+  getValue ( const std::string              &input,
+             const std::deque <std::string> &sections,
+             const std::string              &key )
+  {
+    std::vector <std::string> values;
+    std::vector <std::string> keys (
+      SK_Steam_KeyValues::getKeys (input, sections, &values)
+    );
+
+    size_t idx = 0;
+    for ( auto it : keys )
+    {
+      if (it._Equal (key))
+        return values [idx];
+
+      ++idx;
+    }
+
+    return "";
+  }
+
+  static
+  std::wstring
+  getValueAsUTF16 ( const std::string              &input,
+                    const std::deque <std::string> &sections,
+                    const std::string              &key )
+  {
+    std::vector <std::string> values;
+    std::vector <std::string> keys (
+      SK_Steam_KeyValues::getKeys (input, sections, &values)
+    );
+
+    int idx = 0;
+
+    for ( auto it : keys )
+    {
+      if (it._Equal (key))
+      {
+        return
+          SK_UTF8ToWideChar (
+            values [idx]
+          );
+      }
+
+      ++idx;
+    }
+
+    return L"";
+  }
+};
 
 #endif /* __SK__STEAM_API_H__ */

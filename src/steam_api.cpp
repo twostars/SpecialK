@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This file is part of Special K.
  *
  * Special K is free software : you can redistribute it
@@ -256,6 +256,113 @@ callback_func_t SteamAPI_UserStatsReceived_Original = nullptr;
 extern "C" void __fastcall SteamAPI_UserStatsReceived_Detour       (CCallbackBase* This, UserStatsReceived_t* pParam);
 //extern "C" void __cdecl SteamAPI_UserStatsReceivedIOFail_Detour (CCallbackBase* This, UserStatsReceived_t* pParam, bool bIOFailure, SteamAPICall_t hSteamAPICall);
 
+using steam_library_t = wchar_t* [MAX_PATH + 2];
+
+int
+SK_Steam_GetLibraries (steam_library_t** ppLibraries = nullptr);
+
+std::wstring
+SK_Steam_GetApplicationManifestPath (AppId_t appid)
+{
+  if (appid == 0)
+    appid = SK::SteamAPI::AppID ();
+
+  steam_library_t* steam_lib_paths = nullptr;
+  const int        steam_libs      = SK_Steam_GetLibraries (&steam_lib_paths);
+
+  if (! steam_lib_paths)
+    return L"";
+
+  if (steam_libs != 0)
+  {
+    for (int i = 0; i < steam_libs; i++)
+    {
+      wchar_t wszManifest [MAX_PATH + 2] = { };
+
+      wsprintf ( wszManifest,
+                   LR"(%s\steamapps\appmanifest_%u.acf)",
+               (wchar_t *)steam_lib_paths [i],
+                            appid );
+
+      SK_AutoHandle hManifest (
+        CreateFileW ( wszManifest,
+                        GENERIC_READ,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE,
+                          nullptr,        OPEN_EXISTING,
+                            GetFileAttributesW (wszManifest),
+                              nullptr
+                    )
+      );
+
+      if (hManifest != INVALID_HANDLE_VALUE)
+        return wszManifest;
+    }
+  }
+
+  return L"";
+}
+
+std::string
+SK_GetManifestContentsForAppID (AppId_t appid)
+{
+  static std::string manifest;
+
+  if (! manifest.empty ())
+    return manifest;
+
+  std::wstring wszManifest =
+    SK_Steam_GetApplicationManifestPath (appid);
+
+  if (wszManifest.empty ())
+    return manifest;
+
+  SK_AutoHandle hManifest (
+    CreateFileW ( wszManifest.c_str (),
+                    GENERIC_READ,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                      nullptr,        OPEN_EXISTING,
+                        GetFileAttributesW (wszManifest.c_str ()),
+                          nullptr
+                )
+  );
+
+  if (hManifest != INVALID_HANDLE_VALUE)
+  {
+    DWORD dwSizeHigh = 0,
+          dwRead     = 0,
+          dwSize     =
+     GetFileSize (hManifest, &dwSizeHigh);
+
+    auto szManifestData =
+        std::make_unique <char []> (
+          static_cast <std::size_t> (dwSize) +
+          static_cast <std::size_t> (1)
+                                   );
+    auto manifest_data =
+      szManifestData.get ();
+
+    if (! manifest_data)
+      return "";
+
+    const bool bRead =
+      ReadFile ( hManifest,
+                   manifest_data,
+                     dwSize,
+                    &dwRead,
+                       nullptr );
+
+    if (bRead && dwRead)
+    {
+      manifest =
+        std::move (manifest_data);
+
+      return
+        manifest;
+    }
+  }
+
+  return manifest;
+}
 
 S_API
 void
@@ -3116,15 +3223,14 @@ SK_GetSteamDir (void)
     return nullptr;
 }
 
-std::string
-SK_UseManifestToGetAppName (uint32_t appid)
+int
+SK_Steam_GetLibraries (steam_library_t** ppLibraries)
 {
-  typedef char* steam_library_t [MAX_PATH];
-  static bool   scanned_libs = false;
-
 #define MAX_STEAM_LIBRARIES 16
+
+  static bool   scanned_libs = false;
   static int             steam_libs = 0;
-  static steam_library_t steam_lib_paths [MAX_STEAM_LIBRARIES] = { 0 };
+  static steam_library_t steam_lib_paths [MAX_STEAM_LIBRARIES] = { };
 
   static const wchar_t* wszSteamPath;
 
@@ -3135,229 +3241,108 @@ SK_UseManifestToGetAppName (uint32_t appid)
 
     if (wszSteamPath != nullptr)
     {
-      wchar_t wszLibraryFolders [MAX_PATH];
+      wchar_t wszLibraryFolders [MAX_PATH + 2] = { };
 
       lstrcpyW (wszLibraryFolders, wszSteamPath);
-      lstrcatW (wszLibraryFolders, L"\\steamapps\\libraryfolders.vdf");
+      lstrcatW (wszLibraryFolders, LR"(\steamapps\libraryfolders.vdf)");
 
-      if (GetFileAttributesW (wszLibraryFolders) != INVALID_FILE_ATTRIBUTES)
-      {
-        HANDLE hLibFolders =
+      SK_AutoHandle hLibFolders (
           CreateFileW ( wszLibraryFolders,
                           GENERIC_READ,
-                            FILE_SHARE_READ,
-                              nullptr,
-                                OPEN_EXISTING,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE,
+                          nullptr,        OPEN_EXISTING,
                                   GetFileAttributesW (wszLibraryFolders),
-                                    nullptr );
+                              nullptr
+                    )
+      );
 
         if (hLibFolders != INVALID_HANDLE_VALUE)
         {
-          DWORD  dwSize,
-                 dwSizeHigh,
-                 dwRead;
+        DWORD dwSizeHigh = 0,
+              dwRead     = 0,
+              dwSize     =
+         GetFileSize (hLibFolders, &dwSizeHigh);
 
-          // This isn't a 4+ GiB file... so who the heck cares about the high-bits?
-          dwSize = GetFileSize (hLibFolders, &dwSizeHigh);
+        std::unique_ptr <char []>
+          local_data;
+        char*   data = nullptr;
 
-          void* data =
-            new uint8_t [dwSize];
+        local_data =
+          std::make_unique <char []> (dwSize + 4u);
+              data = local_data.get ();
 
           if (data == nullptr)
-          {
-            CloseHandle (hLibFolders);
-            return nullptr;
-          }
+          return steam_libs;
 
           dwRead = dwSize;
 
           if (ReadFile (hLibFolders, data, dwSize, &dwRead, nullptr))
           {
-            for (DWORD i = 0; i < dwSize; i++)
+          data [dwSize] = '\0';
+
+          for (int i = 1; i < MAX_STEAM_LIBRARIES - 1; i++)
             {
-              if (((const char *)data) [i] == '"' && i < dwSize - 3)
-              {
-                if (((const char *)data) [i + 2] == '"')
-                  i += 2;
-                else if (((const char *)data) [i + 3] == '"')
-                  i += 3;
-                else
-                  continue;
+            // Old libraryfolders.vdf format
+            std::wstring lib_path =
+              SK_Steam_KeyValues::getValueAsUTF16 (
+                data, { "LibraryFolders" }, std::to_string (i)
+              );
 
-                char* lib_start = nullptr;
-
-                for (DWORD j = i; j < dwSize; j++,i++)
+            if (lib_path.empty ())
                 {
-                  if (((char *)data) [j] == '"' && lib_start == nullptr && j < dwSize - 1)
-                  {
-                    lib_start = &((char *)data) [j+1];
+              // New (July 2021) libraryfolders.vdf format
+              lib_path =
+                SK_Steam_KeyValues::getValueAsUTF16 (
+                  data, { "LibraryFolders", std::to_string (i) }, "path"
+                );
                   }
 
-                  else if (((char *)data) [j] == '"')
+            if (! lib_path.empty ())
                   {
-                    ((char *)data) [j] = '\0';
-                    lstrcpyA ((char *)steam_lib_paths [steam_libs++], lib_start);
-                    lib_start = nullptr;
+              wcsncpy_s (
+                (wchar_t *)steam_lib_paths [steam_libs++], MAX_PATH,
+                                 lib_path.c_str (),       _TRUNCATE );
                   }
+
+            else
+              break;
                 }
               }
             }
-          }
 
-          delete [] data;
-
-          CloseHandle (hLibFolders);
+      // Finally, add the default Steam library
+      wcsncpy_s ( (wchar_t *)steam_lib_paths [steam_libs++],
+                                               MAX_PATH,
+                          wszSteamPath,       _TRUNCATE );
         }
-      }
-    }
 
     scanned_libs = true;
   }
 
-  // Search custom library paths first
-  if (steam_libs != 0)
-  {
-    for (int i = 0; i < steam_libs; i++)
-    {
-      char szManifest [MAX_PATH] = { '\0' };
+  if (ppLibraries != nullptr)
+    *ppLibraries = steam_lib_paths;
 
-      sprintf ( szManifest,
-                  "%s\\steamapps\\appmanifest_%d.acf",
-                    (char *)steam_lib_paths [i],
-                      appid );
+  return steam_libs;
+}
 
-      if (GetFileAttributesA (szManifest) != INVALID_FILE_ATTRIBUTES)
-      {
-        HANDLE hManifest =
-          CreateFileA ( szManifest,
-                        GENERIC_READ,
-                          FILE_SHARE_READ,
-                            nullptr,
-                              OPEN_EXISTING,
-                                GetFileAttributesA (szManifest),
-                                  nullptr );
+std::string
+SK_UseManifestToGetAppName (AppId_t appid)
+{
+  std::string manifest_data =
+    SK_GetManifestContentsForAppID (appid);
 
-        if (hManifest != INVALID_HANDLE_VALUE)
+  if (! manifest_data.empty ())
         {
-          DWORD  dwSize,
-                 dwSizeHigh,
-                 dwRead;
+    std::string app_name =
+      SK_Steam_KeyValues::getValue (
+        manifest_data, { "AppState" }, "name"
+      );
 
-          dwSize = GetFileSize (hManifest, &dwSizeHigh);
-
-          char* szManifestData =
-            new char [dwSize + 1];
-
-          szManifestData [dwSize] = '\0';
-
-          ReadFile ( hManifest,
-                       szManifestData,
-                         dwSize,
-                           &dwRead,
-                             nullptr );
-
-          CloseHandle (hManifest);
-
-          if (! dwRead)
+    if (! app_name.empty ())
           {
-            delete [] szManifestData;
-            continue;
+      return app_name;
           }
-
-          char* szAppName =
-            StrStrIA (szManifestData, "\"name\"");
-
-          char szGameName [MAX_PATH] = { '\0' };
-
-          if (szAppName != nullptr)
-          {
-            // Make sure everything is lowercase
-            strncpy (szAppName, "\"name\"", strlen ("\"name\""));
-
-            sscanf ( szAppName,
-                       "\"name\" \"%259[^\"]\"",
-                         szGameName );
-
-            return szGameName;
           }
-
-          delete [] szManifestData;
-        }
-      }
-    }
-  }
-
-  char szManifest [MAX_PATH] = { '\0' };
-
-  sprintf ( szManifest,
-              "%ls\\steamapps\\appmanifest_%d.acf",
-                wszSteamPath,
-                  appid );
-
-  if (GetFileAttributesA (szManifest) != INVALID_FILE_ATTRIBUTES)
-  {
-    HANDLE hManifest =
-      CreateFileA ( szManifest,
-                    GENERIC_READ,
-                      FILE_SHARE_READ | FILE_SHARE_WRITE,
-                        nullptr,
-                          OPEN_EXISTING,
-                            GetFileAttributesA (szManifest),
-                              nullptr );
-
-    if (hManifest != INVALID_HANDLE_VALUE)
-    {
-      DWORD  dwSize,
-             dwSizeHigh,
-             dwRead;
-
-      dwSize = GetFileSize (hManifest, &dwSizeHigh);
-
-      char* szManifestData =
-        new char [dwSize + 1];
-
-      szManifestData [dwSize] = '\0';
-
-      if (szManifestData == nullptr)
-      {
-        CloseHandle (hManifest);
-        return nullptr;
-      }
-
-      ReadFile ( hManifest,
-                   szManifestData,
-                     dwSize,
-                       &dwRead,
-                         nullptr );
-
-      CloseHandle (hManifest);
-
-      if (! dwRead)
-      {
-        delete [] szManifestData;
-        return nullptr;
-      }
-
-      char* szAppName =
-        StrStrIA (szManifestData, "\"name\"");
-
-      char szGameName [MAX_PATH] = { '\0' };
-
-      if (szAppName != nullptr)
-      {
-        // Make sure everything is lowercase
-        strncpy (szAppName, "\"name\"", strlen ("\"name\""));
-
-        sscanf ( szAppName,
-                   "\"name\" \"%259[^\"]\"",
-                     szGameName );
-
-        return szGameName;
-      }
-
-      delete [] szManifestData;
-    }
-  }
 
   return "";
 }
