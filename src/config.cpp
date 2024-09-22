@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This file is part of Special K.
  *
  * Special K is free software : you can redistribute it
@@ -177,6 +177,7 @@ sk::ParameterInt*         init_delay;
 sk::ParameterInt*         log_level;
 sk::ParameterBool*        trace_libraries;
 sk::ParameterBool*        strict_compliance;
+sk::ParameterBool*        resolve_symbol_names;
 sk::ParameterBool*        silent;
 sk::ParameterStringW*     version;
 
@@ -914,6 +915,16 @@ SK_LoadConfigEx (std::wstring name, bool create)
     dll_ini,
       L"SpecialK.System",
         L"StrictCompliant" );
+
+  resolve_symbol_names =
+    static_cast <sk::ParameterBool *>
+      (g_ParameterFactory.create_parameter <bool> (
+        L"Resolve Module Symbol Names")
+      );
+  resolve_symbol_names->register_to_ini (
+    dll_ini,
+      L"SpecialK.System",
+        L"ResolveSymbolNames" );
 
   trace_libraries =
     static_cast <sk::ParameterBool *>
@@ -2583,6 +2594,8 @@ SK_LoadConfigEx (std::wstring name, bool create)
     config.system.trace_load_library = trace_libraries->get_value ();
   if (strict_compliance->load ())
     config.system.strict_compliance = strict_compliance->get_value ();
+  if (resolve_symbol_names->load ())
+    config.system.resolve_symbol_names = resolve_symbol_names->get_value ();
   if (log_level->load ())
     config.system.log_level = log_level->get_value ();
   if (prefer_fahrenheit->load ())
@@ -3105,6 +3118,9 @@ SK_SaveConfig ( std::wstring name,
 
   strict_compliance->set_value           (config.system.strict_compliance);
   strict_compliance->store               ();
+
+  resolve_symbol_names->set_value        (config.system.resolve_symbol_names);
+  resolve_symbol_names->store            ();
 
   version->set_value                     (SK_VER_STR);
   version->store                         ();

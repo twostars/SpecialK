@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This file is part of Special K.
  *
  * Special K is free software : you can redistribute it
@@ -125,7 +125,13 @@ CrashHandler::Shutdown (void)
 std::string
 SK_GetSymbolNameFromModuleAddr (HMODULE hMod, uintptr_t addr)
 {
-  std::string ret = "";
+  std::string ret;
+
+  if (!config.system.resolve_symbol_names)
+  {
+    ret = "UNKNOWN";
+    return ret;
+  }
 
   HANDLE hProc =
     GetCurrentProcess ();
@@ -634,6 +640,13 @@ ULONG
 SK_GetSymbolNameFromModuleAddr (HMODULE hMod, uintptr_t addr, char* pszOut, ULONG ulLen)
 {
   ULONG ret = 0;
+
+  if (!config.system.resolve_symbol_names)
+  {
+    *pszOut = '\0';
+    ret     = 0;
+    return ret;
+  }
 
   if (config.system.strict_compliance)
     EnterCriticalSection (&cs_dbghelp);

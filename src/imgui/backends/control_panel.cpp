@@ -1099,6 +1099,17 @@ SK_ImGui_ControlPanel (void)
           ImGui::EndTooltip   (  );
         }
 
+        ImGui::Checkbox  ("Resolve Module Symbol Names",     &config.system.resolve_symbol_names);
+
+        if (ImGui::IsItemHovered ()) {
+          ImGui::BeginTooltip (  );
+          ImGui::Text         ("Resolve Module Symbol Names During DLL Startup");
+          ImGui::Separator    (  );
+          ImGui::BulletText   ("Improves startup time at the cost of the inability to automatically blacklist modules.");
+          ImGui::BulletText   ("When disabled, drastically reduces DLL startup time");
+          ImGui::EndTooltip   (  );
+        }
+
         ImGui::EndGroup    ( );
         ImGui::SameLine    ( );
         ImGui::BeginGroup  ( );

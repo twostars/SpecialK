@@ -1,4 +1,4 @@
-/**
+﻿/**
  * This file is part of Special K.
  *
  * Special K is free software : you can redistribute it
@@ -425,6 +425,8 @@ struct sk_config_t
             version             = SK_VER_STR;
     bool    trace_load_library  = true;
     bool    strict_compliance   = false;
+    bool    
+      resolve_symbol_names      = false;
   } system;
 } extern config;
 
