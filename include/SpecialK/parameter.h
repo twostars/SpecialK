@@ -1,4 +1,4 @@
-
+﻿
 /**
  * This file is part of Special K.
  *
@@ -185,6 +185,17 @@ protected:
 class ParameterFactory {
 public:
   template <typename _T> iParameter* create_parameter  (const wchar_t* name);
+
+  template <typename _ParamType>
+  void
+  create_parameter  (_ParamType** param, const wchar_t* name)
+  {
+    UNREFERENCED_PARAMETER (name);
+
+    *param = new _ParamType ();
+    params.push_back (*param);
+  }
+
 protected:
 private:
   std::vector <iParameter *> params;
